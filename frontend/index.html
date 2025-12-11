@@ -1,1 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Gestión Salud - Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    body { font-family: Arial; margin: 20px; background:#0f1720; color:#fff; }
+    .hidden{ display:none; }
+    iframe{ width:100%; height:600px; border: none; }
+  </style>
+</head>
+<body>
+  <h1>Gestión Salud - Painel</h1>
 
+  <div id="auth">
+    <h3>Login</h3>
+    <input id="email" type="email" placeholder="email">
+    <input id="password" type="password" placeholder="senha">
+    <button id="btnLogin">Entrar</button>
+    <button id="btnSignup">Criar conta</button>
+    <div id="msg"></div>
+  </div>
+
+  <div id="panel" class="hidden">
+    <button id="btnLogout">Sair</button>
+    <h2>Planilha (embutida)</h2>
+    <!-- substitua ID_DA_PLANILHA pelo ID real do Google Sheet -->
+    <iframe id="sheetFrame" src=""></iframe>
+
+    <h3>Notificações</h3>
+    <div>
+      <input id="destino" placeholder="UUID do usuário destino">
+      <input id="mensagem" placeholder="Mensagem">
+      <button id="enviar">Enviar notificação</button>
+    </div>
+    <div id="notifList"></div>
+  </div>
+
+<script>
+const SUPABASE_URL = "https://SEU_PROJETO.supabase.co"; // substituir
+const SUPABASE_ANON = "ANON_KEY_AQUI"; // substituir (anon key)
+const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const authDiv = document.getElementById('auth');
+const panel = document.getElementById('panel');
+const sheetFrame = document.getElementById('sheetFrame');
+
+document.getElementById('btnSignup').onclick = async () => {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) document.getElementById('msg').innerText = error.message;
+  else document.getElementById('msg').innerText = "Verifique seu e-mail (se o confirm estiver on).";
+}
+
+document.getElementById('btnLogin').onclick = async () => {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { document.getElementById('msg').innerText = error.message; return; }
+  // usuário logado
+  showPanel();
+}
+
+document.getElementById('btnLogout').onclick = async () => {
+  await supabase.auth.signOut();
+  panel.classList.add('hidden');
+  authDiv.classList.remove('hidden');
+}
+
+function showPanel(){
+  authDiv.classList.add('hidden');
+  panel.classList.remove('hidden');
+  // Embutir planilha: coloque o link com /pubhtml se for público
+  const sheetId = "ID_DA_PLANILHA"; // substituir
+  sheetFrame.src = `https://docs.google.com/spreadsheets/d/${sheetId}/htmlembed`;
+  loadNotifs();
+}
+
+document.getElementById('enviar').onclick = async () => {
+  const destino = document.getElementById('destino').value;
+  const mensagem = document.getElementById('mensagem').value;
+  const session = supabase.auth.getSession();
+  const token = (await session).data?.session?.access_token;
+  if (!token) { alert("Sem token"); return; }
+  const res = await fetch("http://localhost:8000/notificacoes", {
+    method: "POST",
+    headers: { "Content-Type":"application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ usuario_destino: destino, mensagem })
+  });
+  const d = await res.json();
+  if (!res.ok) alert(JSON.stringify(d));
+  else { alert("Enviado"); loadNotifs(); }
+}
+
+async function loadNotifs(){
+  const session = await supabase.auth.getSession();
+  const token = session.data?.session?.access_token;
+  if (!token) return;
+  const res = await fetch("http://localhost:8000/notificacoes", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const json = await res.json();
+  const list = document.getElementById('notifList');
+  list.innerHTML = "";
+  if (json.notificacoes && json.notificacoes.length){
+    json.notificacoes.forEach(n => {
+      const el = document.createElement('div');
+      el.innerText = `${n.criada_em} - ${n.mensagem} - lida:${n.lida}`;
+      list.appendChild(el);
+    });
+  } else {
+    list.innerText = "Sem notificações";
+  }
+}
+</script>
+</body>
+</html>
